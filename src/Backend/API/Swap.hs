@@ -40,7 +40,11 @@ getSwapInstanceId wallet = do
   oracleInstanceId <- getContractId (Wallet 1) "oracle" >>= errorOnNothing "there is no oracle yet"
   oracle <- waitForLast oracleInstanceId
   savedId <- getContractId wallet "swap"
-  maybe (Simulator.activateContract wallet $ Swap oracle) pure savedId
+  let activateNew = do
+        cid <- Simulator.activateContract wallet $ Swap oracle
+        saveContractId wallet "swap" cid
+        pure cid
+  maybe activateNew pure savedId
 
 runEndpoint :: ToJSON a => String -> a -> ContractInstanceId -> Simulator.Simulation (Builtin OracleContracts) ()
 runEndpoint ep arg ciid = do
