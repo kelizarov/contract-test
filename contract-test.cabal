@@ -44,6 +44,9 @@ library
                        Backend.Server
                        Backend.API
                        Backend.API.Init
+                       Backend.API.Update
+                       Backend.API.Swap
+                       Backend.ContractStorage
   build-depends:       aeson
                      , base ^>=4.14.1.0
                      , containers

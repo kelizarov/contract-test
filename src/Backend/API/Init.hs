@@ -12,79 +12,39 @@
 
 module Backend.API.Init where
 
-import           Plutus.PAB.Core                ( PABAction
-                                                , PABRunner(..)
-                                                )
-import qualified Plutus.PAB.Simulator          as Simulator
+import qualified Plutus.PAB.Simulator                as Simulator
 
-import           Control.Monad                  ( forM_
-                                                , void
-                                                , when
-                                                )
-import           Control.Monad.Freer            ( Eff
-                                                , Member
-                                                , interpret
-                                                , type (~>)
-                                                )
-import           Control.Monad.Freer.Error      ( Error )
-import           Control.Monad.Freer.Extras.Log ( LogMsg )
-import           Control.Monad.IO.Class         ( MonadIO(..) )
-import           Data.Aeson                     ( FromJSON
-                                                , Result(..)
-                                                , fromJSON
-                                                )
-import           Data.Monoid                    ( Last(..) )
-import           Data.Text                      ( Text
-                                                , pack
-                                                )
-import           Ledger
-import           Ledger.Constraints
-import qualified Ledger.Value                  as Value
-import           Plutus.Contract         hiding ( when )
-import qualified Plutus.Contracts.Currency     as Currency
-import           Plutus.PAB.Effects.Contract    ( ContractEffect(..) )
-import           Plutus.PAB.Effects.Contract.Builtin
-                                                ( type (.\\)
-                                                , Builtin
-                                                , SomeBuiltin(..)
-                                                , endpointsToSchemas
-                                                , handleBuiltin
-                                                )
-import           Plutus.PAB.Monitoring.PABLogMsg
-                                                ( PABMultiAgentMsg )
-import           Plutus.PAB.Simulator           ( SimulatorEffectHandlers )
-import qualified Plutus.PAB.Simulator          as Simulator
-import           Plutus.PAB.Types               ( PABError(..) )
-import qualified Plutus.PAB.Webserver.Server   as PAB.Server
+import           Control.Monad                       (forM_, when)
+import           Control.Monad.IO.Class              (MonadIO (..))
+import           Data.Monoid                         (Last (..))
+import           Plutus.Contract                     hiding (when)
+import           Plutus.PAB.Effects.Contract.Builtin (Builtin)
+import           Wallet.Emulator.Types               (Wallet (..))
+import           Wallet.Types                        (ContractInstanceId (..))
 
-import           Wallet.Emulator.Types          ( Wallet(..)
-                                                , walletPubKey
-                                                )
-import           Wallet.Types                   ( ContractInstanceId(..) )
-
+import           Backend.ContractStorage
 import           Backend.PAB.Handlers
 import           Contract.Init
-import qualified Plutus.PAB.Effects.Contract     as Contract
-import Data.Aeson
+import           Data.Aeson
 
 
-initEndpoint :: Simulator.Simulation (Builtin OracleContracts) ()
+initEndpoint :: WithContractStorage => Simulator.Simulation (Builtin OracleContracts) ()
 initEndpoint = do
     Simulator.logString @(Builtin OracleContracts) "Starting Oracle PAB webserver. Press enter to exit."
-    cidInit   <- Simulator.activateContract (Wallet 1) Init
+    let w1 = Wallet 1
+    cidInit   <- Simulator.activateContract w1 Init
+    saveContractId w1 "init" cidInit
     cs        <- waitForLast cidInit
     _         <- Simulator.waitUntilFinished cidInit
 
-    cidOracle <- Simulator.activateContract (Wallet 1) $ Oracle cs
-    liftIO $ writeFile "oracle.cid" $ show $ unContractInstanceId cidOracle
-    oracle <- waitForLast cidOracle
+    cidOracle <- Simulator.activateContract w1 $ Oracle cs
+    saveContractId w1 "oracle" cidOracle
+    -- oracle <- waitForLast cidOracle
 
-    forM_ wallets $ \w -> when (w /= Wallet 1) $ do
-        cid <- Simulator.activateContract w $ Swap oracle
-        liftIO
-            $ writeFile ('W' : show (getWallet w) ++ ".cid")
-            $ show
-            $ unContractInstanceId cid
+    -- forM_ wallets $ \w -> when (w /= w1) $ do
+    --     cid <- Simulator.activateContract w $ Swap oracle
+    --     saveContractId w "swap" cid
+
 
 waitForLast :: FromJSON a => ContractInstanceId -> Simulator.Simulation t a
 waitForLast cid = flip Simulator.waitForState cid $ \json ->
