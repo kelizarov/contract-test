@@ -77,8 +77,8 @@ pab = do
   logConfig <- defaultConfig
   (trace :: Trace IO (PrettyObject (AppMsg ContractExe)), _) <- setupTrace_ logConfig "pab"
   let trace' = convertLog PABMsg $ convertLog PrettyObject trace
-  migrate trace' (DbConfig "pab-core.db" 10)
   config <- liftIO $ decodeFileThrow "plutus-pab.yaml"
+  migrate trace' (dbConfig config)
   void $ forkIO do
     void $ runApp SqliteBackend trace' config $ forever do
       liftIO (readChan chan) >>= \case
