@@ -53,6 +53,7 @@ data Request
   = Install InstallRequest
   | Activate ActivateRequest
   | Call CallRequest
+  | GetInstanceState InstanceStateRequest
 
 data InstallRequest = InstallRequest
   { name :: Text
@@ -71,6 +72,11 @@ data CallRequest = CallRequest
   , payload    :: Value }
   deriving (Generic, FromJSON)
 
+data InstanceStateRequest = InstanceStateRequest {
+  instanceId :: ContractInstanceId,
+  wallet     :: Integer
+} deriving (Generic, FromJSON)
+
 pab :: IO (Chan Message)
 pab = do
   chan <- newChan
@@ -82,10 +88,10 @@ pab = do
   void $ forkIO do
     void $ runApp SqliteBackend trace' config $ forever do
       liftIO (readChan chan) >>= \case
-          Message (Install req) back  -> installHandler req back
-          Message (Activate req) back -> activateHandler req back
-          Message (Call req) back     -> callHandler req back
-
+          Message (Install req) back          -> installHandler req back
+          Message (Activate req) back         -> activateHandler req back
+          Message (Call req) back             -> callHandler req back
+          Message (GetInstanceState req) back -> getInstanceState req back
   pure chan
     where
       installHandler InstallRequest {..} back = do
@@ -97,6 +103,9 @@ pab = do
       callHandler CallRequest {..} back = do
         mbError <- Plutus.PAB.Core.callEndpointOnInstance instanceId endpoint payload
         maybe (makeResponse back ("ok" :: Text)) (makeResponse back) mbError
+      getInstanceState InstanceStateRequest {..} back = do
+        result <- Plutus.PAB.Core.waitForState (\json -> Just json) instanceId
+        makeResponse back result
 
 contractsDirectory :: Text
 contractsDirectory = "contracts"
@@ -120,7 +129,7 @@ serverApp = do
     catchBodyAndPack post "/install" Install
     catchBodyAndPack post "/activate" Activate
     catchBodyAndPack post "/call" Call
-
+    catchBodyAndPack post "/getInstanceState" GetInstanceState
 
 parsedBody :: FromJSON a => ActionM a
 parsedBody = do
